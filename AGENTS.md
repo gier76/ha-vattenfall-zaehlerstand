@@ -133,16 +133,21 @@ Reihenfolge einhalten, nach jedem Schritt Ergebnis berichten:
   Formatierung/Zeitplan-Asserts OK. Hinweis: `dev/smoke_test.sh` ist Linux-only — auf Windows
   equivalent mit native-Pfad-Harness ausgeführt (bash übergibt `/c/...`-Pfade an Windows-Python,
   mock_ha.py findet die Datei so nicht).
-- [ ] **Aufgabe 2 – GitHub:** wartet auf GitHub-Nutzername, Repo-Name, öffentlich/privat.
-  3× `CHANGE-ME` (repository.yaml ×2, config.yaml ×1), `git init` noch nicht gemacht.
-- [ ] **Aufgabe 3 – echter HA-Test:** Blocker ist die CHANGE-ME-URL.
-- [ ] Formulario-Erkennung durch keinen echten Lauf verifiziert.
+- [x] **Aufgabe 2 – GitHub: fertig (2026-11-04).** Privates Repo
+  https://github.com/gier76/ha-vattenfall-zaehlerstand (main, Commit ab4f0e9, remote verifiziert
+  via `git ls-remote`). CHANGE-ME ersetzt, `grep -rn CHANGE-ME .` leer. Windows-Pitfall:
+  `git push` hing im Credential-Prompt → git lokal auf Helper `!gh auth git-credential` gestellt;
+  einmalig gepusht mit URL `https://gier76:<gh-token>@github.com/...`.
+- [ ] **Aufgabe 3 – echter HA-Test:** braucht jetzt: HA-URL+Token (bekannt: 192.168.1.21:8123,
+  ha-mcp), GitHub-Token für das private Repo im Supervisor (`POST /api/addons/repos` mit
+  `auth_token`), PLZ + Vertragsnummern + Sensor-Auswahl vom Nutzer. Lizenz bisher offen.
+- [ ] Formular-Erkennung durch keinen echten Lauf verifiziert.
 
 ### Review-Befunde
-- **MITTEL – Zeitzone**: `run.py` Scheduler nutzt `datetime.now()` ohne TZ; Add-on-Container
-  laufen UTC (Supervisor erbt Host-TZ nicht in Add-ons) → geplante Uhrzeit greift +1/+2 h später.
-  Vorschlag: `datetime.now(ZoneInfo("Europe/Berlin"))` in run.py oder `ENV TZ=Europe/Berlin` im
-  Dockerfile. Verhaltensänderung → erst nach Zustimmung; bei Aufgabe 3 im echten HA verifizieren.
+- **MITTEL – Zeitzone** (run.py Scheduler `datetime.now()` ohne TZ; Container laufen UTC →
+  Zeitplan +1/+2 h Versatz): **FIXED 2026-11-04** — `ZoneInfo("Europe/Berlin")` in run.py
+  (Fallback auf Systemzeit ohne tzdata) + `ENV TZ=Europe/Berlin` im Dockerfile. Im echten HA
+  bei Aufgabe 3 verifizieren (Log-Zeitstempel vs. Lokalzeit).
 - **MITTEL – `SUBMIT_RE` enthält `bestätigen`** (form.py Zeile 24): könnte im echten Formular
   einen Bestätigungsdialog treffen; nur nach ausgefülltem Zählerstand aktiv → bei Aufgabe 3
   zuerst dry-run.
