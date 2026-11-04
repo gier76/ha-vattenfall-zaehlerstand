@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.log
+# Laufzeitdaten und Screenshots enthalten persönliche Daten – nie committen
+data/
+shots/
+settings.json
+state.json
+*.png
+*.zip

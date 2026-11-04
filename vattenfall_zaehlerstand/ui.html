@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vattenfall Zählerstand</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --fg: #1d2330; --muted: #5b6577; --line: #d9dde5;
+    --accent: #0a66c2; --accent-fg: #ffffff; --warn: #b45309; --ok: #1a7f37; --err: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171d; --card: #1e232c; --fg: #e6e9ef; --muted: #9aa4b5; --line: #323a48;
+            --accent: #4c9aff; --accent-fg: #0b1220; --warn: #f0a04b; --ok: #4cc26b; --err: #ff7b72; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  label.inline { display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 8px 0; }
+  .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+  input[type=text], input[type=search], input[type=number], input[type=time], select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--fg); font: inherit; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .months { display: flex; flex-wrap: wrap; gap: 6px; }
+  .months label { display: inline-flex; margin: 0; font-weight: 500; gap: 4px; align-items: center;
+                  border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { padding: 9px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg);
+           color: var(--fg); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button.danger { border-color: var(--err); color: var(--err); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .preview { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .preview b { color: var(--fg); }
+  .warn { color: var(--warn); }
+  .ok { color: var(--ok); }
+  .err { color: var(--err); }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px;
+        max-height: 260px; overflow: auto; font-size: 12px; white-space: pre-wrap; margin: 8px 0 0; }
+  ul.shots { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+  a { color: var(--accent); }
+  .banner { border-left: 4px solid var(--warn); padding: 8px 12px; background: var(--bg); border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Vattenfall Zählerstand</h1>
+
+  <div class="banner">
+    Inoffizielles Add-on. Bei Vattenfall-Kunden mit intelligentem Messsystem (iMSys) werden
+    Kunden-Zählerstände nicht angenommen. Neue Einrichtung zuerst mit einem <b>Testlauf</b> prüfen.
+  </div>
+
+  <section>
+    <h2>Lieferstelle</h2>
+    <label for="plz">Postleitzahl der Lieferstelle</label>
+    <input id="plz" type="text" inputmode="numeric" maxlength="5" placeholder="12345">
+  </section>
+
+  <section id="sec-electricity">
+    <h2>Strom</h2>
+    <label class="inline"><input type="checkbox" id="electricity-enabled"> Strom melden</label>
+    <label for="electricity-account">Vertragskontonummer (Strom)</label>
+    <input id="electricity-account" type="text" autocomplete="off">
+    <label for="electricity-filter">Sensor für den Zählerstand (kWh)</label>
+    <input id="electricity-filter" type="search" placeholder="Sensoren filtern …">
+    <select id="electricity-sensor"></select>
+    <div class="preview" id="electricity-preview"></div>
+    <label for="electricity-decimals">Nachkommastellen</label>
+    <select id="electricity-decimals">
+      <option value="0">0 (ganze kWh)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option>
+    </select>
+  </section>
+
+  <section id="sec-gas">
+    <h2>Gas</h2>
+    <label class="inline"><input type="checkbox" id="gas-enabled"> Gas melden</label>
+    <label for="gas-account">Vertragskontonummer (Gas)</label>
+    <input id="gas-account" type="text" autocomplete="off">
+    <label for="gas-filter">Sensor für den Zählerstand (m³)</label>
+    <input id="gas-filter" type="search" placeholder="Sensoren filtern …">
+    <select id="gas-sensor"></select>
+    <div class="preview" id="gas-preview"></div>
+    <label for="gas-decimals">Nachkommastellen</label>
+    <select id="gas-decimals">
+      <option value="0">0 (ganze m³)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option>
+    </select>
+  </section>
+
+  <section>
+    <h2>Zeitplan</h2>
+    <label class="inline"><input type="checkbox" id="schedule-enabled"> Automatisch melden</label>
+    <div class="row">
+      <div><label for="run-day">Tag im Monat (1–28)</label>
+           <input id="run-day" type="number" min="1" max="28"></div>
+      <div><label for="run-time">Uhrzeit</label>
+           <input id="run-time" type="time"></div>
+    </div>
+    <label>Monate</label>
+    <div class="months" id="months"></div>
+    <p class="hint">Vattenfall braucht den Stand mindestens einmal im Jahr zur Abrechnung (z. B. nur Dezember).</p>
+    <label class="inline"><input type="checkbox" id="auto-submit"> Automatische Läufe senden wirklich ab</label>
+    <p class="hint">Aus = automatische Läufe sind nur Testläufe (Formular wird ausgefüllt, nichts abgesendet).</p>
+  </section>
+
+  <section>
+    <h2>Benachrichtigung</h2>
+    <label for="notify">Zusätzlicher Notify-Dienst (optional)</label>
+    <select id="notify"></select>
+    <p class="hint">Eine Meldung in Home Assistant („Benachrichtigungen“) gibt es immer.</p>
+  </section>
+
+  <section>
+    <div class="buttons">
+      <button class="primary" id="save">Speichern</button>
+      <button id="test">Testlauf (nichts wird gesendet)</button>
+      <button class="danger" id="send">Jetzt wirklich senden …</button>
+    </div>
+    <div id="msg" class="hint"></div>
+  </section>
+
+  <section>
+    <h2>Status</h2>
+    <div id="status" class="hint">–</div>
+    <pre id="log" hidden></pre>
+    <h2 style="margin-top:16px">Screenshots</h2>
+    <p class="hint">Je Schritt ein Bild; im Fehlerfall zeigt die Datei mit „ERROR“, was das Formular gerade zeigte.</p>
+    <ul class="shots" id="shots"></ul>
+  </section>
+</main>
+
+<script>
+"use strict";
+const MONTH_NAMES = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+const $ = (id) => document.getElementById(id);
+let sensors = [];
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
+  };
+  const r = await fetch("api/" + path, opt);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+  return data;
+}
+
+function say(text, cls) {
+  const m = $("msg"); m.textContent = text || ""; m.className = "hint " + (cls || "");
+}
+
+/* ---- Einheiten ---- */
+function convert(kind, value, unit) {
+  const u = (unit || "").toLowerCase().replace("³", "3");
+  if (kind === "electricity") {
+    if (u === "" || u === "kwh") return value;
+    if (u === "wh") return value / 1000;
+    if (u === "mwh") return value * 1000;
+  } else if (u === "" || u === "m3") return value;
+  return null;
+}
+function truncate(v, dec) {
+  const f = Math.pow(10, dec);
+  return (Math.trunc(v * f) / f).toFixed(dec).replace(".", ",");
+}
+function recommended(kind, s) {
+  const u = (s.unit || "").toLowerCase().replace("³", "3");
+  if (kind === "electricity") return s.device_class === "energy" || ["kwh","wh","mwh"].includes(u);
+  return s.device_class === "gas" || ["m3","ft3","ccf"].includes(u);
+}
+
+/* ---- Dropdown ---- */
+function fillSensorSelect(kind, selected) {
+  const sel = $(kind + "-sensor");
+  const q = $(kind + "-filter").value.trim().toLowerCase();
+  const keep = selected !== undefined ? selected : sel.value;
+  sel.replaceChildren();
+  const none = document.createElement("option");
+  none.value = ""; none.textContent = "– bitte wählen –"; sel.appendChild(none);
+
+  const groups = [["Empfohlen", []], ["Weitere Sensoren", []]];
+  for (const s of sensors) {
+    const hay = (s.entity_id + " " + s.name).toLowerCase();
+    if (q && !hay.includes(q) && s.entity_id !== keep) continue;
+    groups[recommended(kind, s) ? 0 : 1][1].push(s);
+  }
+  for (const [label, list] of groups) {
+    if (!list.length) continue;
+    const g = document.createElement("optgroup"); g.label = label;
+    for (const s of list) {
+      const o = document.createElement("option");
+      o.value = s.entity_id;
+      o.textContent = `${s.name} (${s.entity_id}) – ${s.state}${s.unit ? " " + s.unit : ""}`;
+      g.appendChild(o);
+    }
+    sel.appendChild(g);
+  }
+  if (keep && !sensors.some(s => s.entity_id === keep)) {   // Sensor existiert nicht mehr
+    const o = document.createElement("option");
+    o.value = keep; o.textContent = keep + " (nicht gefunden)"; sel.appendChild(o);
+  }
+  sel.value = keep || "";
+  updatePreview(kind);
+}
+
+function updatePreview(kind) {
+  const el = $(kind + "-preview"); const id = $(kind + "-sensor").value;
+  el.className = "preview"; el.replaceChildren();
+  if (!id) return;
+  const s = sensors.find(x => x.entity_id === id);
+  if (!s) { el.textContent = "Sensor wurde in Home Assistant nicht gefunden."; el.classList.add("err"); return; }
+  const v = convert(kind, parseFloat(s.state), s.unit);
+  if (v === null) {
+    el.textContent = `Einheit „${s.unit}“ wird nicht unterstützt (erwartet ${kind === "electricity" ? "kWh/Wh/MWh" : "m³"}).`;
+    el.classList.add("err"); return;
+  }
+  const dec = parseInt($(kind + "-decimals").value, 10) || 0;
+  el.append("Aktuell ", Object.assign(document.createElement("b"), {textContent: `${s.state} ${s.unit}`}),
+            " → wird gemeldet als ", Object.assign(document.createElement("b"), {textContent: truncate(v, dec)}));
+}
+
+function fillNotify(services, selected) {
+  const sel = $("notify"); sel.replaceChildren();
+  const none = document.createElement("option"); none.value = ""; none.textContent = "– keiner –"; sel.appendChild(none);
+  for (const n of services) {
+    const o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o);
+  }
+  if (selected && !services.includes(selected)) {
+    const o = document.createElement("option"); o.value = selected; o.textContent = selected + " (nicht gefunden)"; sel.appendChild(o);
+  }
+  sel.value = selected || "";
+}
+
+/* ---- Einstellungen laden/speichern ---- */
+function buildMonths() {
+  const box = $("months");
+  MONTH_NAMES.forEach((name, i) => {
+    const l = document.createElement("label");
+    const c = document.createElement("input"); c.type = "checkbox"; c.value = String(i + 1);
+    l.append(c, name); box.appendChild(l);
+  });
+}
+
+function applySettings(s) {
+  $("plz").value = s.postal_code || "";
+  for (const kind of ["electricity", "gas"]) {
+    $(kind + "-enabled").checked = !!s[kind].enabled;
+    $(kind + "-account").value = s[kind].contract_account || "";
+    $(kind + "-decimals").value = String(s[kind].decimals || 0);
+    $(kind + "-filter").value = "";
+    fillSensorSelect(kind, s[kind].sensor || "");
+  }
+  $("schedule-enabled").checked = !!s.schedule_enabled;
+  $("run-day").value = s.run_day;
+  $("run-time").value = s.run_time;
+  $("auto-submit").checked = !!s.auto_submit;
+  const months = new Set(s.months);
+  document.querySelectorAll("#months input").forEach(c => { c.checked = months.has(parseInt(c.value, 10)); });
+}
+
+function collectSettings() {
+  const out = {
+    postal_code: $("plz").value.trim(),
+    schedule_enabled: $("schedule-enabled").checked,
+    auto_submit: $("auto-submit").checked,
+    run_day: parseInt($("run-day").value, 10),
+    run_time: $("run-time").value,
+    months: [...document.querySelectorAll("#months input")].filter(c => c.checked).map(c => parseInt(c.value, 10)),
+    notify_service: $("notify").value,
+  };
+  for (const kind of ["electricity", "gas"]) {
+    out[kind] = {
+      enabled: $(kind + "-enabled").checked,
+      contract_account: $(kind + "-account").value.trim(),
+      sensor: $(kind + "-sensor").value,
+      decimals: parseInt($(kind + "-decimals").value, 10) || 0,
+    };
+  }
+  return out;
+}
+
+async function save() {
+  try {
+    const saved = await api("settings", collectSettings());
+    applySettings(saved); say("Gespeichert.", "ok"); return true;
+  } catch (e) { say("Speichern fehlgeschlagen: " + e.message, "err"); return false; }
+}
+
+/* ---- Läufe & Status ---- */
+let poll = null;
+async function refreshStatus() {
+  try {
+    const st = await api("status");
+    const box = $("status"); box.className = "hint";
+    if (st.running) { box.textContent = "Lauf läuft …"; box.classList.add("warn"); }
+    else if (st.last) {
+      box.textContent = `${st.last.when} – ${st.last.dry_run ? "Testlauf" : "echter Lauf"}: ${st.last.lines.join(" | ")}`;
+      box.classList.add(st.last.failed ? "err" : "ok");
+    } else box.textContent = "Noch kein Lauf seit dem Start.";
+    const log = $("log"); log.hidden = !st.log.length; log.textContent = st.log.join("\n");
+    log.scrollTop = log.scrollHeight;
+    const ul = $("shots"); ul.replaceChildren();
+    for (const name of st.shots) {
+      const li = document.createElement("li");
+      const a = document.createElement("a"); a.href = "api/shot/" + encodeURIComponent(name); a.target = "_blank";
+      a.textContent = name; li.appendChild(a); ul.appendChild(li);
+    }
+    for (const id of ["test", "send"]) $(id).disabled = st.running;
+    if (!st.running && poll) { clearInterval(poll); poll = null; }
+  } catch (e) { $("status").textContent = "Status nicht abrufbar: " + e.message; }
+}
+
+async function startRun(dry) {
+  if (!(await save())) return;
+  if (!dry && !confirm("Zählerstände jetzt wirklich an Vattenfall senden?")) return;
+  try {
+    await api("run", {dry_run: dry});
+    say(dry ? "Testlauf gestartet." : "Lauf gestartet.", "ok");
+    if (!poll) poll = setInterval(refreshStatus, 2000);
+    refreshStatus();
+  } catch (e) { say("Start fehlgeschlagen: " + e.message, "err"); }
+}
+
+async function init() {
+  buildMonths();
+  try {
+    const [s, sens, notify] = await Promise.all([api("settings"), api("sensors"), api("notify")]);
+    sensors = sens.sensors; fillNotify(notify.services, s.notify_service); applySettings(s);
+    if (sens.error) say("Sensorliste nicht geladen: " + sens.error, "err");
+  } catch (e) { say("Laden fehlgeschlagen: " + e.message, "err"); }
+  for (const kind of ["electricity", "gas"]) {
+    $(kind + "-filter").addEventListener("input", () => fillSensorSelect(kind));
+    $(kind + "-sensor").addEventListener("change", () => updatePreview(kind));
+    $(kind + "-decimals").addEventListener("change", () => updatePreview(kind));
+  }
+  $("save").addEventListener("click", save);
+  $("test").addEventListener("click", () => startRun(true));
+  $("send").addEventListener("click", () => startRun(false));
+  refreshStatus();
+}
+init();
+</script>
+</body>
+</html>
