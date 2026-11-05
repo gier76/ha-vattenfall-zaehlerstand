@@ -124,10 +124,10 @@ def find_reading_input(page, kind: str):
     if not found:
         return None
     if len(found) == 1:
-        return page.locator(f'input[data-vf-hit="{found[0][0]["n}"]')
+        return page.locator(f'input[data-vf-hit="{found[0][0]["n"]}"]')
     exact = [h for h, k in found if k]
     if len(exact) == 1:
-        return page.locator(f'input[data-vf-hit="{exact[0]["n}"]')
+        return page.locator(f'input[data-vf-hit="{exact[0]["n"]}"]')
     raise RuntimeError(
         f"{len(found)} Zählerstand-Felder gefunden und nicht eindeutig als "
         f"{'Strom' if kind == 'electricity' else 'Gas'} erkennbar – bitte manuell prüfen"
