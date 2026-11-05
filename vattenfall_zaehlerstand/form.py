@@ -205,6 +205,32 @@ def contract_click_via_cdp(context, page, kind: str):
     return None
 
 
+def ax_box(cdp, nd):
+    try:
+        model = cdp.send("DOM.getBoxModel", {"backendNodeId": nd["backendDOMNodeId"]})["model"]
+        xs, ys = model["content"][0::2], model["content"][1::2]
+        return sum(xs) / len(xs), sum(ys) / len(ys)
+    except Exception:
+        return None
+
+
+def ax_find_node(cdp, name_re, roles):
+    """AX-Knoten (auch closed Shadow-DOM) nach Rolle + Namensregex; liefert Koordinaten."""
+    try:
+        nodes = cdp.send("Accessibility.getFullAXTree").get("nodes", [])
+    except Exception as exc:
+        log.warning("AX-Tree fehlgeschlagen: %s", exc)
+        return None, None
+    for nd in nodes:
+        role = (nd.get("role") or {}).get("value") or ""
+        name = ((nd.get("name") or {}).get("value") or "")
+        if role in roles and name_re.search(name):
+            box = ax_box(cdp, nd)
+            if box is not None:
+                return nd, box
+    return None, None
+
+
 def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: bool, headless: bool, login: dict | None = None) -> str:
     """Trägt einen Zählerstand ein. Rückgabe: 'dry-run' oder 'submitted'.
 
@@ -231,6 +257,13 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
         )
         page = context.new_page()
         page.set_default_timeout(20000)
+        cdp = None
+        try:
+            cdp = context.new_cdp_session(page)
+            cdp.send("DOM.enable")
+            cdp.send("Accessibility.enable")
+        except Exception as exc:
+            log.warning("CDP nicht verfügbar: %s", exc)
         try:
             log.info("[%s] Öffne %s", kind, FORM_URL)
             page.goto(FORM_URL, wait_until="domcontentloaded")
@@ -336,6 +369,13 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
             for step in range(1, 8):
                 if login_ok and not filled_reading:
                     inp = find_reading_input(page, kind)
+                    if inp is None and cdp is not None:
+                        _nd, box = ax_find_node(cdp, READING_RE, ("textbox",))
+                        if box is not None:
+                            page.mouse.click(box[0], box[1])
+                            page.keyboard.type(reading)
+                            filled_reading = True
+                            log.info("[%s] Zählerstand %s per AX-Feld eingetragen", kind, reading)
                     if inp is not None:
                         inp.fill(reading)
                         filled_reading = True
@@ -343,6 +383,17 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
 
                 if not filled_account:
                     acc_field = find_input(page, ACCOUNT_RE)
+                    if acc_field is None and cdp is not None:
+                        _nd, box = ax_find_node(cdp, ACCOUNT_RE, ("textbox",))
+                        if box is not None:
+                            page.mouse.click(box[0], box[1])
+                            page.keyboard.type(account)
+                            _nd, box2 = ax_find_node(cdp, PLZ_RE, ("textbox",))
+                            if box2 is not None and plz:
+                                page.mouse.click(box2[0], box2[1])
+                                page.keyboard.type(plz)
+                            filled_account = True
+                            log.info("[%s] Vertragskonto %s per AX-Feld eingetragen", kind, mask(account))
                     if acc_field is not None:
                         acc_field.fill(account)
                         plz_field = find_input(page, PLZ_RE)
@@ -356,6 +407,30 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
 
                 if filled_reading:
                     submit = find_button(page, SUBMIT_RE)
+                    if submit is None and cdp is not None:
+                        _nd, box = ax_find_node(cdp, SUBMIT_RE, ("button",))
+                        if box is not None:
+                            if dry_run:
+                                shot(page, "99_dry_run_vor_absenden")
+                                log.info("[%s] DRY-RUN: Absenden wird NICHT ausgelöst", kind)
+                                return "dry-run"
+                            page.mouse.click(box[0], box[1])
+                            seen = False
+                            for _ in range(10):
+                                try:
+                                    txt = page.evaluate("() => document.body.innerText")
+                                except Exception:
+                                    txt = ""
+                                if SUCCESS_RE.search(txt):
+                                    seen = True
+                                    break
+                                page.wait_for_timeout(2500)
+                            if not seen:
+                                shot(page, "98_keine_bestaetigung")
+                                raise RuntimeError("Keine Erfolgsmeldung nach dem Absenden erkannt – bitte prüfen")
+                            shot(page, "99_abgesendet")
+                            log.info("[%s] Zählerstand übermittelt", kind)
+                            return "submitted"
                     if submit is not None:
                         if dry_run:
                             shot(page, "99_dry_run_vor_absenden")
@@ -363,9 +438,17 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                             return "dry-run"
                         submit.click()
                         page.wait_for_timeout(1500)
-                        try:
-                            page.get_by_text(SUCCESS_RE).first.wait_for(timeout=25000)
-                        except Exception:
+                        seen = False
+                        for _ in range(10):
+                            try:
+                                txt = page.evaluate("() => document.body.innerText")
+                            except Exception:
+                                txt = ""
+                            if SUCCESS_RE.search(txt):
+                                seen = True
+                                break
+                            page.wait_for_timeout(2500)
+                        if not seen:
                             shot(page, "98_keine_bestaetigung")
                             raise RuntimeError("Keine Erfolgsmeldung nach dem Absenden erkannt – bitte prüfen")
                         shot(page, "99_abgesendet")
@@ -373,6 +456,13 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                         return "submitted"
 
                 nxt = find_button(page, NEXT_RE)
+                if nxt is None and cdp is not None:
+                    _nd, box = ax_find_node(cdp, NEXT_RE, ("button",))
+                    if box is not None:
+                        log.info("[%s] 'Weiter' per AX geklickt bei (%.0f, %.0f)", kind, box[0], box[1])
+                        page.mouse.click(box[0], box[1])
+                        page.wait_for_timeout(1500)
+                        continue
                 if nxt is None:
                     raise RuntimeError(f"Kein 'Weiter'/'Absenden'-Button gefunden (Schritt {step})")
                 nxt.click()
