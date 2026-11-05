@@ -13,7 +13,7 @@ check() { if [ "$2" = "$3" ]; then echo "OK   $1"; else echo "FAIL $1 (erwartet:
 cleanup() { kill "${MOCK_PID:-}" "${APP_PID:-}" 2>/dev/null; rm -rf "$TMP"; }
 trap cleanup EXIT
 
-MOCK_PORT=18123 MOCK_POST_LOG="$TMP/posts.log" python3 "$ROOT/dev/mock_ha.py" & MOCK_PID=$!
+( cd "$ROOT/dev" && MOCK_PORT=18123 MOCK_POST_LOG="$TMP/posts.log" python3 mock_ha.py ) & MOCK_PID=$!
 ( cd "$APP" && HA_URL=http://127.0.0.1:18123 HA_TOKEN=x PORT=18099 BIND=127.0.0.1 ALLOWED_IPS=127.0.0.1 \
   SETTINGS_PATH="$TMP/settings.json" STATE_PATH="$TMP/state.json" SHOT_DIR="$TMP/shots" \
   python3 -u run.py >"$TMP/server.log" 2>&1 ) & APP_PID=$!
