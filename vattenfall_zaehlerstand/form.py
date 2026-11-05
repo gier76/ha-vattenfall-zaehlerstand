@@ -217,11 +217,11 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                 if login_btn is None:
                     raise RuntimeError("Weiter-Button fuer Login nicht gefunden")
                 login_btn.click()
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(4000)  # Server-Antwort + Fehlermeldung abwarten
                 shot(page, "02_login")
                 dump_inputs(page)
                 if find_input(page, PASS_RE) is not None:
-                    msg = page.evaluate("() => { const lines = document.body.innerText.split(String.fromCharCode(10)); const hit = lines.find(l => /abgelehnt|fehler|ung\u00f6ltig|falsch|gesperrt|aktivier|abgelaufen/i.test(l)); return hit || lines.join(' | ').slice(0, 300); }")
+                    msg = page.evaluate("() => { const lines = document.body.innerText.split(String.fromCharCode(10)); const hit = lines.find(l => /abgelehnt|fehler|ung\u00f6ltig|falsch|gesperrt|aktivier|abgelaufen/i.test(l)); return hit || lines.join(' | ').slice(0, 600); }")
                     log.info("[%s] Portal-Meldung nach Login-Versuch: %s", kind, msg)
                     raise RuntimeError("Login wurde abgelehnt – Benutzername/Passwort prüfen")
                 login_ok = True
