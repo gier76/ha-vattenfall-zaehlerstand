@@ -194,7 +194,7 @@ def contract_click_via_cdp(context, page, kind: str):
         if cand is None:
             continue
         try:
-            model = cdp.send("DOM.getBoxModel", backendNodeId=cand["backendDOMNodeId"])["model"]
+            model = cdp.send("DOM.getBoxModel", {"backendNodeId": cand["backendDOMNodeId"]})["model"]
             xs, ys = model["content"][0::2], model["content"][1::2]
             cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
             page.mouse.click(cx, cy)
