@@ -227,20 +227,26 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                     raise RuntimeError("Login wurde abgelehnt – Benutzername/Passwort prüfen")
                 login_ok = True
                 log.info("[%s] Im Portal angemeldet", kind)
-                # SPA lädt nach Login verzögert; Reload darf die Session nicht verlieren.
-                for _ in range(4):
-                    page.wait_for_timeout(2500)
-                    try:
-                        if find_reading_input(page, kind) is not None:
-                            break
-                    except RuntimeError:
-                        break
-                    nav = first_visible(page.get_by_role("link", name=ZÄHLER_NAV_RE))
-                    if nav is not None:
-                        log.info("[%s] Navigation 'Zählerstand' geklickt", kind)
-                        nav.click()
-                        page.wait_for_timeout(2500)
+                # Nach Login: Dashboard sichtbar machen und Diagnostic loggen
+                page.wait_for_timeout(4000)
                 dump_inputs(page)
+                interactive = page.evaluate(
+                    "() => JSON.stringify(Array.from(document.querySelectorAll('button,[role=button],a'))"
+                    ".filter(e => !e.disabled && e.offsetParent !== null)"
+                    ".map(e => ({tag: e.tagName, aria: e.getAttribute('aria-label') || '', text: (e.textContent||'').trim().slice(0,40)}))"
+                    ".slice(0, 40))"
+                )
+                log.info("[%s] Nach Login: Elemente: %s", kind, interactive)
+                snippet = page.evaluate(
+                    "() => document.body.innerText.split(String.fromCharCode(10)).join(' | ').slice(0, 600)"
+                )
+                log.info("[%s] Nach Login: Text: %s", kind, snippet)
+                nav = find_button(page, ZÄHLER_NAV_RE) or first_visible(page.get_by_role("link", name=ZÄHLER_NAV_RE))
+                if nav is not None:
+                    log.info("[%s] 'Zählerstand'-Element geklickt", kind)
+                    nav.click()
+                    page.wait_for_timeout(3000)
+                    dump_inputs(page)
 
             filled_account = False
             filled_reading = False
