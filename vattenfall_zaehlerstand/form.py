@@ -19,6 +19,7 @@ SHOT_DIR = Path(os.environ.get("SHOT_DIR", "/share/vattenfall_zaehlerstand"))
 COOKIE_RE = re.compile(r"nur notwendige|ablehnen|alle ablehnen|alle akzeptieren|alles akzeptieren|akzeptieren", re.I)
 ACCOUNT_RE = re.compile(r"vertragskonto", re.I)
 PLZ_RE = re.compile(r"postleitzahl|plz", re.I)
+DATE_RE = re.compile(r"datum", re.I)
 READING_RE = re.compile(r"z(ä|ae)hlerstand", re.I)
 NEXT_RE = re.compile(r"^\s*(weiter|fortfahren|prüfen|pruefen|los|zählerstand eingeben|zum zählerstand)\s*$", re.I)
 SUBMIT_RE = re.compile(r"absenden|übermitteln|uebermitteln|abschicken|^\s*senden\s*$|zählerstand mitteilen|bestätigen", re.I)
@@ -365,8 +366,24 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
 
             filled_account = False
             filled_reading = False
+            filled_date = False
+            today = dt.date.today().strftime("%d.%m.%Y")
 
             for step in range(1, 8):
+                if login_ok and not filled_date:
+                    date_field = find_input(page, DATE_RE)
+                    if date_field is None and cdp is not None:
+                        _nd, box = ax_find_node(cdp, DATE_RE, ("textbox",))
+                        if box is not None:
+                            page.mouse.click(box[0], box[1])
+                            page.keyboard.type(today)
+                            filled_date = True
+                            log.info("[%s] Datum %s per AX-Feld eingetragen", kind, today)
+                    if date_field is not None:
+                        date_field.fill(today)
+                        filled_date = True
+                        log.info("[%s] Datum %s eingetragen", kind, today)
+
                 if login_ok and not filled_reading:
                     inp = find_reading_input(page, kind)
                     if inp is None and cdp is not None:
