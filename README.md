@@ -62,7 +62,8 @@ werden abgelehnt, statt falsche Werte zu melden.
 ## Entwicklung
 
 `run.py` (Einstellungen, HA-API, Zeitplaner, Weboberfläche), `form.py` (Playwright),
-`ui.html` (Oberfläche). Es werden keine zusätzlichen Python-Pakete benötigt.
+`ui.html` (Oberfläche). Das Playwright-Basisimage bringt nur die Chromium-Browser mit –
+das Python-Paket `playwright` wird im Dockerfile per `pip3 install` nachinstalliert.
 
 Lokaler Test ohne Home Assistant und ohne Zugriff auf Vattenfall:
 
