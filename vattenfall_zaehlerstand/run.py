@@ -52,6 +52,8 @@ KINDS = (("electricity", "Strom"), ("gas", "Gas"))
 
 DEFAULTS: dict = {
     "postal_code": "",
+    "username": "",                # Portal-Login (seit 2026 Pflicht fuer Zählerstand)
+    "password": "",                # nur in /data/settings.json, nie geloggt/geechoert
     "schedule_enabled": False,
     "auto_submit": False,          # automatische Läufe: False = nur Testlauf
     "run_day": 1,
@@ -111,6 +113,16 @@ def validate_settings(data: dict) -> dict:
     if notify and not NOTIFY_RE.match(notify):
         raise ValueError("Notify-Dienst ungültig")
     out["notify_service"] = notify
+
+    username = str(data.get("username", "")).strip()
+    if username and (len(username) > 64 or any(ord(c) < 32 for c in username)):
+        raise ValueError("Benutzername ungültig")
+    out["username"] = username
+
+    password = str(data.get("password", ""))
+    if password and (len(password) > 128 or any(ord(c) < 32 for c in password)):
+        raise ValueError("Passwort ungültig")
+    out["password"] = password
 
     for kind, label in KINDS:
         cfg = data.get(kind) or {}
@@ -281,11 +293,12 @@ def run_once(settings: dict, dry_run: bool) -> dict:
     lines: list[str] = []
     failed = False
     plz = settings.get("postal_code", "")
+    login = {"username": settings.get("username", ""), "password": settings.get("password", "")}
 
-    if not plz:
+    if not login["username"] or not login["password"]:
         failed = True
-        lines.append("Keine Postleitzahl konfiguriert")
-        log.error("Keine Postleitzahl konfiguriert")
+        lines.append("Portal-Login (Benutzername + Passwort) nicht konfiguriert – Vattenfall verlangt Login")
+        log.error("Kein Portal-Login konfiguriert")
     else:
         for kind, label in KINDS:
             cfg = settings.get(kind) or {}
@@ -306,7 +319,7 @@ def run_once(settings: dict, dry_run: bool) -> dict:
                 reading = format_reading(value, int(cfg.get("decimals", 0)))
                 result = submit_reading(
                     kind, cfg["contract_account"], plz, reading,
-                    dry_run=dry_run, headless=bool(settings.get("headless", True)),
+                    dry_run=dry_run, headless=bool(settings.get("headless", True)), login=login,
                 )
                 if result == "submitted":
                     state[kind] = {"value": str(value), "date": dt.date.today().isoformat()}
@@ -435,7 +448,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self._send(200, (APP_DIR / "ui.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/settings":
-                self._json(200, load_settings())
+                public = dict(load_settings())
+                public["password_set"] = bool(public.pop("password", ""))
+                self._json(200, public)
             elif path == "/api/sensors":
                 try:
                     self._json(200, {"sensors": list_sensors()})
@@ -469,9 +484,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self._body()
             if path == "/api/settings":
-                settings = validate_settings(data)
+                incoming = dict(data)
+                if not str(incoming.get("password", "")):
+                    incoming["password"] = load_settings().get("password", "")
+                settings = validate_settings(incoming)
                 save_settings(settings)
-                self._json(200, settings)
+                public = dict(settings)
+                public["password_set"] = bool(public.pop("password", ""))
+                self._json(200, public)
             elif path == "/api/run":
                 settings = load_settings()
                 if not run_in_background(settings, dry_run=bool(data.get("dry_run", True))):

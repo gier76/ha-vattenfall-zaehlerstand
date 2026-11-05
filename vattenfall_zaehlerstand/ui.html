@@ -59,7 +59,12 @@
 
   <section>
     <h2>Lieferstelle</h2>
-    <label for="plz">Postleitzahl der Lieferstelle</label>
+    <label for="username">Benutzername (Vattenfall-Online-Portal)</label>
+    <input id="username" type="text" autocomplete="off">
+    <label for="password">Passwort</label>
+    <input id="password" type="password" autocomplete="off" placeholder="leer lassen = bleibt unverändert">
+    <p class="hint">Login wird nur lokal im Add-on gespeichert und nie angezeigt oder geloggt.</p>
+    <label for="plz">Postleitzahl der Lieferstelle (optional)</label>
     <input id="plz" type="text" inputmode="numeric" maxlength="5" placeholder="12345">
   </section>
 
@@ -248,6 +253,8 @@ function buildMonths() {
 }
 
 function applySettings(s) {
+  $("username").value = s.username || "";
+  $("password").placeholder = s.password_set ? "•••• gespeichert – leer = unverändert" : "leer lassen = unverändert";
   $("plz").value = s.postal_code || "";
   for (const kind of ["electricity", "gas"]) {
     $(kind + "-enabled").checked = !!s[kind].enabled;
@@ -266,6 +273,8 @@ function applySettings(s) {
 
 function collectSettings() {
   const out = {
+    username: $("username").value.trim(),
+    password: $("password").value,
     postal_code: $("plz").value.trim(),
     schedule_enabled: $("schedule-enabled").checked,
     auto_submit: $("auto-submit").checked,

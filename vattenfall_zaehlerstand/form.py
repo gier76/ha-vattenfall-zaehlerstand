@@ -23,6 +23,13 @@ READING_RE = re.compile(r"z(ä|ae)hlerstand", re.I)
 NEXT_RE = re.compile(r"^\s*(weiter|fortfahren|prüfen|pruefen|los|zählerstand eingeben|zum zählerstand)\s*$", re.I)
 SUBMIT_RE = re.compile(r"absenden|übermitteln|uebermitteln|abschicken|^\s*senden\s*$|zählerstand mitteilen|bestätigen", re.I)
 SUCCESS_RE = re.compile(r"vielen dank|erfolgreich|wurde übermittelt|erfolgreich übermittelt|gespeichert", re.I)
+# Login: Vattenfall verlangt seit 2026 Login (Benutzername+Passwort) fuer die
+# Zählerstandserfassung; das offene Formular ohne Login gibt es nicht mehr.
+LOGIN_OPTION_RE = re.compile(r"benutzername und passwort", re.I)
+USER_RE = re.compile(r"benutzername|benutzer|nutzername|e-?mail", re.I)
+PASS_RE = re.compile(r"passwort|password", re.I)
+KIND_RE = {"electricity": re.compile(r"strom|electric|elektrizit", re.I),
+           "gas": re.compile(r"gas|erdgas", re.I)}
 
 log = logging.getLogger("vattenfall")
 
@@ -81,6 +88,41 @@ def find_button(page, text_re):
     return None
 
 
+def find_reading_input(page, kind: str):
+    """Zählerstand-Eingabefeld; bei mehreren Feldern nach Strom/Gas unterscheiden.
+
+    Liefert None, wenn kein Feld sichtbar ist; RuntimeError bei mehrdeutiger Wahl.
+    """
+    rows = page.evaluate(
+        """() => [...document.querySelectorAll('input')].map((e, i) => ({
+            i, visible: e.offsetParent !== null && !e.disabled, type: e.type || '',
+            aria: e.getAttribute('aria-label') || '',
+            placeholder: e.placeholder || '',
+            label: (e.labels && e.labels[0] ? e.labels[0].innerText : ''),
+            nearby: (e.closest('form,fieldset,.form-group,li,tr') || e.parentElement || document.body).innerText.slice(0, 200)
+        }))"""
+    )
+    kind_re = KIND_RE.get(kind)
+    hits = []
+    for r in rows:
+        if not r["visible"] or r["type"] in ("hidden", "checkbox", "radio", "submit"):
+            continue
+        meta = " ".join((r["aria"], r["placeholder"], r["label"]))
+        if READING_RE.search(meta):
+            hits.append((r, kind_re is not None and (kind_re.search(meta) or kind_re.search(r["nearby"]))))
+    if not hits:
+        return None
+    if len(hits) == 1:
+        return page.locator("input").nth(hits[0][0]["i"])
+    exact = [r for r, k in hits if k]
+    if len(exact) == 1:
+        return page.locator("input").nth(exact[0]["i"])
+    raise RuntimeError(
+        f"{len(hits)} Zählerstand-Felder gefunden und nicht eindeutig als "
+        f"{'Strom' if kind == 'electricity' else 'Gas'} erkennbar – bitte manuell prüfen"
+    )
+
+
 def dismiss_cookies(page) -> None:
     btn = first_visible(page.get_by_role("button", name=COOKIE_RE))
     if btn is not None:
@@ -105,8 +147,12 @@ def dump_inputs(page) -> None:
         pass
 
 
-def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: bool, headless: bool) -> str:
-    """Trägt einen Zählerstand ein. Rückgabe: 'dry-run' oder 'submitted'."""
+def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: bool, headless: bool, login: dict | None = None) -> str:
+    """Trägt einen Zählerstand ein. Rückgabe: 'dry-run' oder 'submitted'.
+
+    login = {'username', 'password'}: Portal-Login (seit 2026 Pflicht). Ohne Login
+    wird das alte Vertragskonto+PLZ-Formular versucht.
+    """
     from playwright.sync_api import sync_playwright
 
     SHOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -132,33 +178,52 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
             shot(page, "01_start")
             dump_inputs(page)
 
+            login_ok = False
+            username = (login or {}).get("username") or ""
+            password = (login or {}).get("password") or ""
+            if username and password:
+                opt = first_visible(page.get_by_text(LOGIN_OPTION_RE))
+                if opt is not None:
+                    opt.click()
+                    page.wait_for_timeout(600)
+                user_field = find_input(page, USER_RE)
+                pass_field = find_input(page, PASS_RE)
+                if user_field is None or pass_field is None:
+                    raise RuntimeError("Login-Felder (Benutzername/Passwort) nicht gefunden")
+                user_field.fill(username)
+                pass_field.fill(password)  # Passwort wird nie geloggt
+                login_btn = find_button(page, NEXT_RE)
+                if login_btn is None:
+                    raise RuntimeError("Weiter-Button fuer Login nicht gefunden")
+                login_btn.click()
+                page.wait_for_timeout(2000)
+                shot(page, "02_login")
+                dump_inputs(page)
+                if find_input(page, PASS_RE) is not None:
+                    raise RuntimeError("Login wurde abgelehnt – Benutzername/Passwort prüfen")
+                login_ok = True
+                log.info("[%s] Im Portal angemeldet", kind)
+
             filled_account = False
             filled_reading = False
 
             for step in range(1, 8):
+                if login_ok and not filled_reading:
+                    inp = find_reading_input(page, kind)
+                    if inp is not None:
+                        inp.fill(reading)
+                        filled_reading = True
+                        log.info("[%s] Zählerstand %s eingetragen", kind, reading)
+
                 if not filled_account:
                     acc_field = find_input(page, ACCOUNT_RE)
                     if acc_field is not None:
                         acc_field.fill(account)
                         plz_field = find_input(page, PLZ_RE)
-                        if plz_field is None:
-                            raise RuntimeError("PLZ-Feld nicht gefunden")
-                        plz_field.fill(plz)
+                        if plz_field is not None and plz:
+                            plz_field.fill(plz)
                         filled_account = True
-                        log.info("[%s] Vertragskonto %s und PLZ eingetragen", kind, mask(account))
-
-                elif not filled_reading:
-                    fields = page.get_by_label(READING_RE)
-                    n = visible_count(fields)
-                    if n > 1:
-                        raise RuntimeError(
-                            f"{n} Zählerstand-Felder gefunden (z. B. HT/NT oder mehrere Zähler) – "
-                            "das wird absichtlich nicht automatisch ausgefüllt"
-                        )
-                    if n == 1:
-                        first_visible(fields).fill(reading)
-                        filled_reading = True
-                        log.info("[%s] Zählerstand %s eingetragen", kind, reading)
+                        log.info("[%s] Vertragskonto %s eingetragen", kind, mask(account))
 
                 shot(page, f"{step + 1:02d}_schritt")
                 dump_inputs(page)

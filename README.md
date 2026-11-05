@@ -1,7 +1,8 @@
 # Vattenfall Zählerstand – Home-Assistant-Add-on
 
 Liest Strom- und Gaszählerstände aus **frei wählbaren Home-Assistant-Sensoren** und trägt sie
-automatisch im öffentlichen Vattenfall-Formular (`online.vattenfall.de/zaehlerstand`) ein.
+automatisch im Vattenfall-Online-Portal (`online.vattenfall.de/zaehlerstand`) ein – das Portal
+verlangt Login (Benutzername + Passwort des Online-Kontos).
 
 Die Einrichtung läuft über eine eigene Oberfläche in der Home-Assistant-Seitenleiste
 („Zählerstand"). Dort wählst du Sensoren aus einem Dropdown, das live aus deiner
@@ -16,7 +17,9 @@ Add-on brechen – darum gibt es **Testläufe** und Screenshots bei jedem Schrit
 
 ## Status
 
-Version 0.2.0 – **noch nicht gegen das echte Formular getestet.** Feld- und Button-Erkennung
+Das offene Formular ohne Login existiert nicht mehr (Stand 2026): der Add-on-Flow meldet sich
+mit Benutzername + Passwort an und unterscheidet Zählerstand-Felder per Strom/Gas-Kontext.
+Feld- und Button-Erkennung
 laufen über Beschriftungen („Vertragskonto", „Postleitzahl", „Zählerstand", „Weiter",
 „Absenden"). Ob das so passt, zeigt der erste Testlauf. Die Oberfläche und die API wurden
 gegen einen simulierten Home Assistant getestet.
@@ -29,7 +32,8 @@ gegen einen simulierten Home Assistant getestet.
 2. Add-on-Store neu laden, „Vattenfall Zählerstand" installieren und starten
    (das Image ist groß, weil Chromium enthalten ist).
 3. In der Seitenleiste **Zählerstand** öffnen (ggf. „In Seitenleiste anzeigen" aktivieren).
-4. PLZ, Vertragskontonummern und Sensoren eintragen → **Speichern** → **Testlauf**.
+4. Portal-Login (Benutzername + Passwort) eintragen, optional PLZ/Vertragskontonummern und
+   Sensoren setzen → **Speichern** → **Testlauf**.
 5. Screenshots in der Oberfläche prüfen. Erst wenn alles stimmt: „Jetzt wirklich senden"
    oder den Zeitplan aktivieren (und „Automatische Läufe senden wirklich ab" einschalten).
 
