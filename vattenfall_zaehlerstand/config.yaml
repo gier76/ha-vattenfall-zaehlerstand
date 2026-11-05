@@ -1,5 +1,5 @@
 name: "Vattenfall Zählerstand"
-version: "0.2.10"
+version: "0.2.11"
 slug: vattenfall_zaehlerstand
 description: "Überträgt Strom- und Gaszählerstände aus Home Assistant ins Vattenfall-Online-Portal (Login nötig) – Einrichtung per Weboberfläche mit Sensor-Dropdown"
 url: "https://github.com/gier76/ha-vattenfall-zaehlerstand"

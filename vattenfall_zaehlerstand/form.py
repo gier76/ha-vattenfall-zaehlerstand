@@ -226,6 +226,13 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                     raise RuntimeError("Login wurde abgelehnt – Benutzername/Passwort prüfen")
                 login_ok = True
                 log.info("[%s] Im Portal angemeldet", kind)
+                page.wait_for_timeout(3000)
+                if find_reading_input(page, kind) is None:
+                    log.info("[%s] Nach Login noch kein Zählerstand-Feld – Seite neu laden", kind)
+                    page.goto(FORM_URL, wait_until="domcontentloaded")
+                    page.wait_for_timeout(3000)
+                    dismiss_cookies(page)
+                    dump_inputs(page)
 
             filled_account = False
             filled_reading = False
