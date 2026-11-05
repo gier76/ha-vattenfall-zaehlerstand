@@ -480,6 +480,15 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                         page.mouse.click(box[0], box[1])
                         page.wait_for_timeout(1500)
                         continue
+                if nxt is None and cdp is not None:
+                    nodes = cdp.send("Accessibility.getFullAXTree").get("nodes", [])
+                    names = []
+                    for nd in nodes:
+                        role = (nd.get("role") or {}).get("value") or ""
+                        nm = ((nd.get("name") or {}).get("value") or "").strip()
+                        if role in ("button", "link", "checkbox", "listitem") and nm:
+                            names.append(f"{role}: {nm[:45]}")
+                    log.info("[%s] AX-Elemente: %s", kind, json.dumps(names[:30], ensure_ascii=False))
                 if nxt is None:
                     raise RuntimeError(f"Kein 'Weiter'/'Absenden'-Button gefunden (Schritt {step})")
                 nxt.click()
