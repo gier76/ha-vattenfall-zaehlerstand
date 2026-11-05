@@ -37,7 +37,8 @@ HA_TOKEN = os.environ.get("HA_TOKEN") or os.environ.get("SUPERVISOR_TOKEN", "")
 PORT = int(os.environ.get("PORT", "8099"))
 BIND = os.environ.get("BIND", "0.0.0.0")
 # Ingress-Anfragen kommen ausschließlich vom Supervisor-Proxy.
-ALLOWED_IPS = set(filter(None, os.environ.get("ALLOWED_IPS", "172.30.32.2").split(",")))
+# HA-Container (Ingress) und Supervisor-Gateway (Proxy) – beide nur im Docker-Netz erreichbar.
+ALLOWED_IPS = set(filter(None, os.environ.get("ALLOWED_IPS", "172.30.32.2,172.30.32.1").split(",")))
 
 # Zeitplan und Meldungen in deutscher Lokalzeit (Container laufen sonst UTC).
 try:

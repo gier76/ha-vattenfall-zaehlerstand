@@ -221,6 +221,8 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                 shot(page, "02_login")
                 dump_inputs(page)
                 if find_input(page, PASS_RE) is not None:
+                    msg = page.evaluate("() => document.body.innerText.split(String.fromCharCode(10)).join(' | ').slice(0, 300)")
+                    log.info("[%s] Portal-Meldung nach Login-Versuch: %s", kind, msg)
                     raise RuntimeError("Login wurde abgelehnt – Benutzername/Passwort prüfen")
                 login_ok = True
                 log.info("[%s] Im Portal angemeldet", kind)
