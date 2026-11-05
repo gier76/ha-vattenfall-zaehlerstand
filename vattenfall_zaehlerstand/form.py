@@ -27,6 +27,7 @@ SUCCESS_RE = re.compile(r"vielen dank|erfolgreich|wurde übermittelt|erfolgreich
 # Zählerstandserfassung; das offene Formular ohne Login gibt es nicht mehr.
 LOGIN_OPTION_RE = re.compile(r"benutzername und passwort", re.I)
 LOGIN_DROPDOWN_RE = re.compile(r"login-?optionen", re.I)
+ZÄHLER_NAV_RE = re.compile(r"zählerstand", re.I)
 USER_RE = re.compile(r"benutzername|benutzer|nutzername|e-?mail", re.I)
 PASS_RE = re.compile(r"passwort|password", re.I)
 KIND_RE = {"electricity": re.compile(r"strom|electric|elektrizit", re.I),
@@ -226,13 +227,20 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                     raise RuntimeError("Login wurde abgelehnt – Benutzername/Passwort prüfen")
                 login_ok = True
                 log.info("[%s] Im Portal angemeldet", kind)
-                page.wait_for_timeout(3000)
-                if find_reading_input(page, kind) is None:
-                    log.info("[%s] Nach Login noch kein Zählerstand-Feld – Seite neu laden", kind)
-                    page.goto(FORM_URL, wait_until="domcontentloaded")
-                    page.wait_for_timeout(3000)
-                    dismiss_cookies(page)
-                    dump_inputs(page)
+                # SPA lädt nach Login verzögert; Reload darf die Session nicht verlieren.
+                for _ in range(4):
+                    page.wait_for_timeout(2500)
+                    try:
+                        if find_reading_input(page, kind) is not None:
+                            break
+                    except RuntimeError:
+                        break
+                    nav = first_visible(page.get_by_role("link", name=ZÄHLER_NAV_RE))
+                    if nav is not None:
+                        log.info("[%s] Navigation 'Zählerstand' geklickt", kind)
+                        nav.click()
+                        page.wait_for_timeout(2500)
+                dump_inputs(page)
 
             filled_account = False
             filled_reading = False
