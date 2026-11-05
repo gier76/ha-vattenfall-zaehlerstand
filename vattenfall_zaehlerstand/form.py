@@ -264,13 +264,20 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                 # Login zeigt "Vertrag auswählen" – Karte zur passenden Sparte wählen (JS, da Text über mehrere Elemente verteilt ist).
                 sparte = "gas" if kind == "gas" else "strom|electric|elektrizit"
                 picked = page.evaluate(
-                    "() => { const re = new RegExp('Sparte:\\s*(" + sparte + ")', 'i');"
-                    " const els = [...document.querySelectorAll('li,div,a,button,[role=button]')]"
-                    "   .filter(e => e.offsetWidth > 0 && re.test(e.innerText || ''));"
-                    " if (!els.length) return null;"
-                    " els.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);"
-                    " const el = els[0]; el.scrollIntoView(); el.click();"
-                    " return el.tagName + ' ' + el.innerText.trim().slice(0, 60); }"
+                    "(sparte) => { const re = new RegExp('Sparte:\\s*(" + sparte + ")', 'i');"
+                    " const hits = [];"
+                    " function collect(root) {"
+                    "   for (const el of root.querySelectorAll('*')) {"
+                    "     if (el.offsetWidth > 0 && re.test(el.innerText || '')) hits.push(el);"
+                    "     if (el.shadowRoot) collect(el.shadowRoot);"
+                    "   }"
+                    " }"
+                    " collect(document);"
+                    " if (!hits.length) return null;"
+                    " hits.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);"
+                    " const el = hits[0]; el.scrollIntoView(); el.click();"
+                    " return el.tagName + ' ' + el.innerText.trim().slice(0, 60); }",
+                    sparte
                 )
                 if picked is not None:
                     log.info("[%s] Vertrag-Karte geklickt: %s", kind, picked)
