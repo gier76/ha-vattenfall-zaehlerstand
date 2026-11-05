@@ -289,7 +289,7 @@ RUN_LOCK = threading.Lock()
 STATUS: dict = {"running": False, "last": None}
 
 
-def run_once(settings: dict, dry_run: bool) -> dict:
+def run_once(settings: dict, dry_run: bool, only_kind: str | None = None) -> dict:
     state = load_state()
     lines: list[str] = []
     failed = False
@@ -302,6 +302,8 @@ def run_once(settings: dict, dry_run: bool) -> dict:
         log.error("Kein Portal-Login konfiguriert")
     else:
         for kind, label in KINDS:
+            if only_kind and kind != only_kind:
+                continue
             cfg = settings.get(kind) or {}
             if not cfg.get("enabled"):
                 continue
@@ -340,7 +342,7 @@ def run_once(settings: dict, dry_run: bool) -> dict:
     return {"when": dt.datetime.now(TZ).strftime("%d.%m.%Y %H:%M"), "dry_run": dry_run, "failed": failed, "lines": lines}
 
 
-def run_in_background(settings: dict, dry_run: bool) -> bool:
+def run_in_background(settings: dict, dry_run: bool, only_kind: str | None = None) -> bool:
     """Startet einen Lauf; False, wenn bereits einer läuft."""
     if not RUN_LOCK.acquire(blocking=False):
         return False
@@ -348,7 +350,7 @@ def run_in_background(settings: dict, dry_run: bool) -> bool:
     def worker() -> None:
         STATUS["running"] = True
         try:
-            STATUS["last"] = run_once(settings, dry_run)
+            STATUS["last"] = run_once(settings, dry_run, only_kind)
         except Exception as exc:
             log.exception("Lauf abgebrochen")
             STATUS["last"] = {"when": dt.datetime.now(TZ).strftime("%d.%m.%Y %H:%M"), "dry_run": dry_run,
@@ -508,7 +510,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, public)
             elif path == "/api/run":
                 settings = load_settings()
-                if not run_in_background(settings, dry_run=bool(data.get("dry_run", True))):
+                kind = data.get("kind")
+                if kind not in (None, "", "electricity", "gas"):
+                    self._json(400, {"error": "kind muss electricity oder gas sein"})
+                    return
+                if not run_in_background(settings, dry_run=bool(data.get("dry_run", True)),
+                                         only_kind=kind or None):
                     self._json(409, {"error": "Es läuft bereits ein Lauf"})
                 else:
                     self._json(200, {"started": True})

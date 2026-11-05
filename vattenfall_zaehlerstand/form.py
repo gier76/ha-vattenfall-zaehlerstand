@@ -232,6 +232,18 @@ def ax_find_node(cdp, name_re, roles):
     return None, None
 
 
+def wait_for_form(page, kind: str, seconds: int = 10) -> bool:
+    """Nach Karten-Klick: bis zu seconds warten, bis das Zählerformular sichtbar wird."""
+    for _ in range(seconds * 2):
+        page.wait_for_timeout(500)
+        try:
+            if find_input(page, DATE_RE) is not None or find_reading_input(page, kind) is not None:
+                return True
+        except RuntimeError:
+            return True
+    return False
+
+
 def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: bool, headless: bool, login: dict | None = None) -> str:
     """Trägt einen Zählerstand ein. Rückgabe: 'dry-run' oder 'submitted'.
 
@@ -351,14 +363,18 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                 )
                 if picked is not None:
                     log.info("[%s] Vertrag-Karte geklickt: %s", kind, picked)
-                    page.wait_for_timeout(3000)
+                    page.wait_for_timeout(1500)
+                    if wait_for_form(page, kind):
+                        log.info("[%s] Zählerformular sichtbar", kind)
                     shot(page, "03_contract")
                     dump_inputs(page)
                 else:
                     picked = contract_click_via_cdp(context, page, kind)
                     if picked is not None:
                         log.info("[%s] Vertrag-Karte via CDP geklickt: %s", kind, picked)
-                        page.wait_for_timeout(3000)
+                        page.wait_for_timeout(1500)
+                        if wait_for_form(page, kind):
+                            log.info("[%s] Zählerformular sichtbar", kind)
                         shot(page, "03_contract")
                         dump_inputs(page)
                     else:
@@ -497,6 +513,11 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                     if find_reading_input(page, kind) is not None or find_input(page, DATE_RE) is not None or ax_reading is not None:
                         log.info("[%s] Formularfelder gerade erst sichtbar – Nachladen abwarten, Schritt %d wird wiederholt", kind, step)
                         page.wait_for_timeout(2000)
+                        continue
+                if nxt is None and login_ok and not filled_reading:
+                    again = contract_click_via_cdp(context, page, kind)
+                    if again is not None and wait_for_form(page, kind):
+                        log.info("[%s] Vertrag-Karte erneut geklickt, Formular sichtbar: %s", kind, again)
                         continue
                 if nxt is None:
                     raise RuntimeError(f"Kein 'Weiter'/'Absenden'-Button gefunden (Schritt {step})")
