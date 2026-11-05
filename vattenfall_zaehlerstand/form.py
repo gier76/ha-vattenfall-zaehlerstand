@@ -22,7 +22,7 @@ PLZ_RE = re.compile(r"postleitzahl|plz", re.I)
 DATE_RE = re.compile(r"datum", re.I)
 READING_RE = re.compile(r"z(ä|ae)hlerstand", re.I)
 NEXT_RE = re.compile(r"^\s*(weiter|fortfahren|prüfen|pruefen|los|zählerstand eingeben|zum zählerstand)\s*$", re.I)
-SUBMIT_RE = re.compile(r"absenden|übermitteln|uebermitteln|abschicken|^\s*senden\s*$|zählerstand mitteilen|bestätigen", re.I)
+SUBMIT_RE = re.compile(r"absenden|übermitteln|uebermitteln|abschicken|^\s*senden\s*$|zählerstand mitteilen|bestätigen|z(ä|ae)hlerstand erfassen|erfassen", re.I)
 SUCCESS_RE = re.compile(r"vielen dank|erfolgreich|wurde übermittelt|erfolgreich übermittelt|gespeichert", re.I)
 # Login: Vattenfall verlangt seit 2026 Login (Benutzername+Passwort) fuer die
 # Zählerstandserfassung; das offene Formular ohne Login gibt es nicht mehr.
