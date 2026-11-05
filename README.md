@@ -63,7 +63,10 @@ werden abgelehnt, statt falsche Werte zu melden.
 
 `run.py` (Einstellungen, HA-API, Zeitplaner, Weboberfläche), `form.py` (Playwright),
 `ui.html` (Oberfläche). Das Playwright-Basisimage bringt nur die Chromium-Browser mit –
-das Python-Paket `playwright` wird im Dockerfile per `pip3 install` nachinstalliert.
+das Python-Paket `playwright` wird ohne Netzwerk aus den mitgelieferten Wheels
+im Ordner `vendor/` ins Image gepackt (stdlib `zipfile`, kein pip/apt — deren
+Netzwerkaufrufe hängen im Supervisor-Build auf diesem Host). Das `tzdata`-Wheel
+liefert die Zeitzone für den Zeitplan (`ZoneInfo("Europe/Berlin")`).
 
 Lokaler Test ohne Home Assistant und ohne Zugriff auf Vattenfall:
 
