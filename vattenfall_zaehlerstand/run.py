@@ -380,9 +380,22 @@ def scheduler() -> None:
             now = dt.datetime.now(TZ)
             settings = load_settings()
             state = load_state()
-            if due(settings, now, state):
+            month = now.strftime("%Y-%m")
+            if state.get("last_run_month") != month:
+                state["attempts"] = 0
+            if due(settings, now, state) and int(state.get("attempts", 0)) < 3:
                 if run_in_background(settings, dry_run=not settings.get("auto_submit", False)):
-                    state["last_run"] = now.strftime("%Y-%m")
+                    state["attempts"] = int(state.get("attempts", 0)) + 1
+                    # last_run erst nach erfolgreichem Lauf setzen; fehlerhafte
+                    # Läufe werden bis zu 3 Versuche pro Monat wiederholt.
+                    wait = 0
+                    while STATUS["running"] and wait < 420:
+                        time.sleep(5)
+                        wait += 5
+                    last = STATUS.get("last") or {}
+                    if not last.get("failed"):
+                        state["last_run"] = month
+                    state["last_run_month"] = month
                     save_state(state)
         except Exception:
             log.exception("Fehler im Zeitplaner")
