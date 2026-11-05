@@ -261,16 +261,24 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                     "() => document.body.innerText.split(String.fromCharCode(10)).join(' | ').slice(0, 600)"
                 )
                 log.info("[%s] Nach Login: Text: %s", kind, snippet)
-                # Login zeigt "Vertrag auswählen" – Karte zur passenden Sparte wählen.
-                sparte_re = re.compile(r"Sparte:\s*gas", re.I) if kind == "gas" else re.compile(r"Sparte:\s*(strom|electric|elektrizit)", re.I)
-                card = first_visible(page.get_by_text(sparte_re))
-                if card is None:
-                    card = first_visible(page.get_by_text(ZÄHLER_NAV_RE))
-                if card is not None:
-                    log.info("[%s] Vertrag/Zählerstand-Element geklickt", kind)
-                    card.click()
+                # Login zeigt "Vertrag auswählen" – Karte zur passenden Sparte wählen (JS, da Text über mehrere Elemente verteilt ist).
+                sparte = "gas" if kind == "gas" else "strom|electric|elektrizit"
+                picked = page.evaluate(
+                    "() => { const re = new RegExp('Sparte:\\s*(" + sparte + ")', 'i');"
+                    " const els = [...document.querySelectorAll('li,div,a,button,[role=button]')]"
+                    "   .filter(e => e.offsetWidth > 0 && re.test(e.innerText || ''));"
+                    " if (!els.length) return null;"
+                    " els.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);"
+                    " const el = els[0]; el.scrollIntoView(); el.click();"
+                    " return el.tagName + ' ' + el.innerText.trim().slice(0, 60); }"
+                )
+                if picked is not None:
+                    log.info("[%s] Vertrag-Karte geklickt: %s", kind, picked)
                     page.wait_for_timeout(3000)
+                    shot(page, "03_contract")
                     dump_inputs(page)
+                else:
+                    log.info("[%s] Keine Vertrag-Karte für Sparte gefunden", kind)
 
             filled_account = False
             filled_reading = False
