@@ -489,6 +489,15 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                         if role in ("button", "link", "checkbox", "listitem") and nm:
                             names.append(f"{role}: {nm[:45]}")
                     log.info("[%s] AX-Elemente: %s", kind, json.dumps(names[:30], ensure_ascii=False))
+                if nxt is None and login_ok and not filled_reading:
+                    # Das Zählerformular rendert nach dem Karten-Klick oft erst 1-2 s
+                    # später: wenn Felder gerade erst sichtbar werden, kurz warten und
+                    # den Schritt wiederholen statt abbrechen.
+                    _nd, ax_reading = ax_find_node(cdp, READING_RE, ("textbox",)) if cdp is not None else (None, None)
+                    if find_reading_input(page, kind) is not None or find_input(page, DATE_RE) is not None or ax_reading is not None:
+                        log.info("[%s] Formularfelder gerade erst sichtbar – Nachladen abwarten, Schritt %d wird wiederholt", kind, step)
+                        page.wait_for_timeout(2000)
+                        continue
                 if nxt is None:
                     raise RuntimeError(f"Kein 'Weiter'/'Absenden'-Button gefunden (Schritt {step})")
                 nxt.click()
