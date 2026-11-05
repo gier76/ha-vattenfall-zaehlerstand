@@ -167,7 +167,11 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=headless, args=["--no-sandbox"])
-        context = browser.new_context(locale="de-DE", timezone_id="Europe/Berlin", viewport={"width": 1280, "height": 1600})
+        context = browser.new_context(
+            locale="de-DE", timezone_id="Europe/Berlin", viewport={"width": 1280, "height": 1600},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        )
         page = context.new_page()
         page.set_default_timeout(20000)
         try:
@@ -183,15 +187,26 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
             username = (login or {}).get("username") or ""
             password = (login or {}).get("password") or ""
             if username and password:
-                dropdown = first_visible(page.get_by_role("button", name=LOGIN_DROPDOWN_RE))
-                if dropdown is not None:
-                    dropdown.click()
-                    page.wait_for_timeout(600)
-                opt = first_visible(page.get_by_text(LOGIN_OPTION_RE))
-                if opt is None:
+                page.wait_for_timeout(2000)  # JS-Hydration abwarten
+                picked = False
+                for _ in range(3):
+                    page.evaluate(
+                        "() => { const b = document.querySelector('button[aria-label=\"Login-Optionen\"]');"
+                        " if (b) b.click(); }")
+                    page.wait_for_timeout(800)
+                    picked = page.evaluate(
+                        "() => { const el = [...document.querySelectorAll('li, button, a')]"
+                        ".find(e => e.offsetWidth > 0 && /^benutzername und passwort$/i.test(e.textContent.trim()));"
+                        " if (el) { el.click(); return true; } return false; }")
+                    if picked:
+                        break
+                    page.wait_for_timeout(1500)
+                if not picked:
                     raise RuntimeError("Login-Option 'Benutzername und Passwort' nicht gefunden")
-                opt.click()
-                page.wait_for_timeout(600)
+                try:
+                    page.wait_for_selector("input[aria-label='Passwort']", timeout=10000)
+                except Exception:
+                    pass
                 user_field = find_input(page, USER_RE)
                 pass_field = find_input(page, PASS_RE)
                 if user_field is None or pass_field is None:
