@@ -169,6 +169,42 @@ def dump_inputs(page) -> None:
         pass
 
 
+def contract_click_via_cdp(context, page, kind: str):
+    """Klickt die Vertrag-Karte auch hinter closed Shadow-DOM via CDP-Accessibility-Tree."""
+    needles = ["sparte: gas"] if kind == "gas" else ["sparte: strom", "sparte: electric"]
+    try:
+        cdp = context.new_cdp_session(page)
+        cdp.send("DOM.enable")
+        cdp.send("Accessibility.enable")
+        nodes = cdp.send("Accessibility.getFullAXTree").get("nodes", [])
+    except Exception as exc:
+        log.warning("CDP nicht verfügbar: %s", exc)
+        return None
+    for needle in needles:
+        preferred = None
+        fallback = None
+        for nd in nodes:
+            nm = ((nd.get("name") or {}).get("value") or "").lower()
+            if needle in nm and nd.get("backendDOMNodeId"):
+                if nd.get("role") in ("listitem", "button", "link"):
+                    preferred = nd
+                    break
+                fallback = fallback or nd
+        cand = preferred or fallback
+        if cand is None:
+            continue
+        try:
+            model = cdp.send("DOM.getBoxModel", backendNodeId=cand["backendDOMNodeId"])["model"]
+            xs, ys = model["content"][0::2], model["content"][1::2]
+            cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
+            page.mouse.click(cx, cy)
+            name = ((cand.get("name") or {}).get("value") or "").strip()
+            return f"{cand.get('role')} '{name[:60]}' bei ({cx:.0f}, {cy:.0f})"
+        except Exception as exc:
+            log.warning("BoxModel/Klick fehlgeschlagen: %s", exc)
+    return None
+
+
 def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: bool, headless: bool, login: dict | None = None) -> str:
     """Trägt einen Zählerstand ein. Rückgabe: 'dry-run' oder 'submitted'.
 
@@ -285,7 +321,14 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                     shot(page, "03_contract")
                     dump_inputs(page)
                 else:
-                    log.info("[%s] Keine Vertrag-Karte für Sparte gefunden", kind)
+                    picked = contract_click_via_cdp(context, page, kind)
+                    if picked is not None:
+                        log.info("[%s] Vertrag-Karte via CDP geklickt: %s", kind, picked)
+                        page.wait_for_timeout(3000)
+                        shot(page, "03_contract")
+                        dump_inputs(page)
+                    else:
+                        log.info("[%s] Keine Vertrag-Karte für Sparte gefunden", kind)
 
             filled_account = False
             filled_reading = False
