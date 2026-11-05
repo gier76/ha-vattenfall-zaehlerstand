@@ -91,36 +91,45 @@ def find_button(page, text_re):
 
 
 def find_reading_input(page, kind: str):
-    """Zählerstand-Eingabefeld; bei mehreren Feldern nach Strom/Gas unterscheiden.
+    """Zählerstand-Eingabefeld; durchsucht auch Shadow-DOM-Komponenten.
 
     Liefert None, wenn kein Feld sichtbar ist; RuntimeError bei mehrdeutiger Wahl.
     """
-    rows = page.evaluate(
-        """() => [...document.querySelectorAll('input')].map((e, i) => ({
-            i, visible: e.offsetParent !== null && !e.disabled, type: e.type || '',
-            aria: e.getAttribute('aria-label') || '',
-            placeholder: e.placeholder || '',
-            label: (e.labels && e.labels[0] ? e.labels[0].innerText : ''),
-            nearby: (e.closest('form,fieldset,.form-group,li,tr') || e.parentElement || document.body).innerText.slice(0, 200)
-        }))"""
+    hits = page.evaluate(
+        """() => {
+            const out = [];
+            let n = 0;
+            function collect(root, hostMeta) {
+                for (const el of root.querySelectorAll('input')) {
+                    if (el.offsetParent === null || el.disabled) continue;
+                    const meta = [el.getAttribute('aria-label') || '', el.placeholder || '',
+                        (el.labels && el.labels[0] ? el.labels[0].innerText : ''), hostMeta].join(' ');
+                    el.setAttribute('data-vf-hit', String(n));
+                    out.push({n, meta: meta.slice(0, 250)});
+                    n++;
+                }
+                for (const el of root.querySelectorAll('*')) {
+                    if (el.shadowRoot) collect(el.shadowRoot, hostMeta + ' ' + (el.getAttribute('label') || el.name || ''));
+                }
+            }
+            collect(document, '');
+            return out;
+        }"""
     )
     kind_re = KIND_RE.get(kind)
-    hits = []
-    for r in rows:
-        if not r["visible"] or r["type"] in ("hidden", "checkbox", "radio", "submit"):
-            continue
-        meta = " ".join((r["aria"], r["placeholder"], r["label"]))
-        if READING_RE.search(meta):
-            hits.append((r, kind_re is not None and (kind_re.search(meta) or kind_re.search(r["nearby"]))))
-    if not hits:
+    found = []
+    for h in hits:
+        if READING_RE.search(h["meta"]):
+            found.append((h, kind_re is not None and kind_re.search(h["meta"])))
+    if not found:
         return None
-    if len(hits) == 1:
-        return page.locator("input").nth(hits[0][0]["i"])
-    exact = [r for r, k in hits if k]
+    if len(found) == 1:
+        return page.locator(f'input[data-vf-hit="{found[0][0]["n}"]')
+    exact = [h for h, k in found if k]
     if len(exact) == 1:
-        return page.locator("input").nth(exact[0]["i"])
+        return page.locator(f'input[data-vf-hit="{exact[0]["n}"]')
     raise RuntimeError(
-        f"{len(hits)} Zählerstand-Felder gefunden und nicht eindeutig als "
+        f"{len(found)} Zählerstand-Felder gefunden und nicht eindeutig als "
         f"{'Strom' if kind == 'electricity' else 'Gas'} erkennbar – bitte manuell prüfen"
     )
 
@@ -137,12 +146,23 @@ def dump_inputs(page) -> None:
     """Hilft beim Debuggen: welche Eingabefelder sind gerade sichtbar?"""
     try:
         rows = page.evaluate(
-            """() => [...document.querySelectorAll('input,select,textarea')]
-                .filter(e => e.offsetParent !== null)
-                .map(e => ({type: e.type, name: e.name, id: e.id,
-                            label: (e.labels && e.labels[0] ? e.labels[0].innerText : ''),
-                            aria: e.getAttribute('aria-label') || '',
-                            placeholder: e.placeholder || ''}))"""
+            """() => {
+                const out = [];
+                function collect(root) {
+                    for (const el of root.querySelectorAll('input,select,textarea')) {
+                        if (el.offsetParent === null || el.disabled) continue;
+                        out.push({type: el.type || el.tagName, name: el.name || '', id: el.id || '',
+                                  label: (el.labels && el.labels[0] ? el.labels[0].innerText : ''),
+                                  aria: el.getAttribute('aria-label') || '',
+                                  placeholder: el.placeholder || ''});
+                    }
+                    for (const el of root.querySelectorAll('*')) {
+                        if (el.shadowRoot) collect(el.shadowRoot);
+                    }
+                }
+                collect(document);
+                return out;
+            }"""
         )
         log.info("Sichtbare Felder: %s", json.dumps(rows, ensure_ascii=False))
     except Exception:
@@ -241,10 +261,14 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
                     "() => document.body.innerText.split(String.fromCharCode(10)).join(' | ').slice(0, 600)"
                 )
                 log.info("[%s] Nach Login: Text: %s", kind, snippet)
-                nav = find_button(page, ZÄHLER_NAV_RE) or first_visible(page.get_by_role("link", name=ZÄHLER_NAV_RE))
-                if nav is not None:
-                    log.info("[%s] 'Zählerstand'-Element geklickt", kind)
-                    nav.click()
+                # Login zeigt "Vertrag auswählen" – Karte zur passenden Sparte wählen.
+                sparte_re = re.compile(r"Sparte:\s*gas", re.I) if kind == "gas" else re.compile(r"Sparte:\s*(strom|electric|elektrizit)", re.I)
+                card = first_visible(page.get_by_text(sparte_re))
+                if card is None:
+                    card = first_visible(page.get_by_text(ZÄHLER_NAV_RE))
+                if card is not None:
+                    log.info("[%s] Vertrag/Zählerstand-Element geklickt", kind)
+                    card.click()
                     page.wait_for_timeout(3000)
                     dump_inputs(page)
 
