@@ -26,6 +26,7 @@ SUCCESS_RE = re.compile(r"vielen dank|erfolgreich|wurde übermittelt|erfolgreich
 # Login: Vattenfall verlangt seit 2026 Login (Benutzername+Passwort) fuer die
 # Zählerstandserfassung; das offene Formular ohne Login gibt es nicht mehr.
 LOGIN_OPTION_RE = re.compile(r"benutzername und passwort", re.I)
+LOGIN_DROPDOWN_RE = re.compile(r"login-?optionen", re.I)
 USER_RE = re.compile(r"benutzername|benutzer|nutzername|e-?mail", re.I)
 PASS_RE = re.compile(r"passwort|password", re.I)
 KIND_RE = {"electricity": re.compile(r"strom|electric|elektrizit", re.I),
@@ -182,10 +183,15 @@ def submit_reading(kind: str, account: str, plz: str, reading: str, *, dry_run: 
             username = (login or {}).get("username") or ""
             password = (login or {}).get("password") or ""
             if username and password:
-                opt = first_visible(page.get_by_text(LOGIN_OPTION_RE))
-                if opt is not None:
-                    opt.click()
+                dropdown = first_visible(page.get_by_role("button", name=LOGIN_DROPDOWN_RE))
+                if dropdown is not None:
+                    dropdown.click()
                     page.wait_for_timeout(600)
+                opt = first_visible(page.get_by_text(LOGIN_OPTION_RE))
+                if opt is None:
+                    raise RuntimeError("Login-Option 'Benutzername und Passwort' nicht gefunden")
+                opt.click()
+                page.wait_for_timeout(600)
                 user_field = find_input(page, USER_RE)
                 pass_field = find_input(page, PASS_RE)
                 if user_field is None or pass_field is None:
